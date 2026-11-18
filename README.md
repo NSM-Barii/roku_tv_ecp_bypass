@@ -18,18 +18,17 @@ This is an access control inconsistency within Roku's own API. The same security
 ## 🔥 Impact
 
 - Switch TV inputs without permission (HDMI, antenna, AV)
-- Launch any installed app (Netflix, YouTube, Disney+, etc.)
-- Inject content via deep-linking (`/launch/837?contentId=<video_id>`)
-- Control volume (`/keypress/VolumeUp`, `/keypress/VolumeDown`, `/keypress/FindRemote`)
-- Inject touch and accelerometer events via `/input`
-- Enumerate all installed apps via `/launch/{id}` + `/query/active-app` (bypasses `/query/apps` 403)
+- Launch DIAL-registered apps (Netflix, YouTube confirmed) even with limited mode on
+- **Deep-link content injection** — `/launch/837?contentId=<video_id>` forces YouTube to play a specific video, bypassing the profile selection screen entirely
+- **App kill** — `/keypress/Home` is blocked (403) but `/launch/tvinput.hdmi1` forces the running app off and switches input, achieving the same disruption
+- Enumerate installed apps via `/launch/{id}` + `/query/active-app` (bypasses `/query/apps` 403)
 - Detect physical devices connected via HDMI-CEC (`/launch/tvinput.hdmi*` reveals device names)
 - Monitor what the user is watching via `/query/active-app`
-- Disrupt whatever the user is currently watching
 - All of the above works in standby mode (`power-mode: Ready`)
 - No authentication, pairing, or user interaction required
 - Bypasses the most restrictive security setting available
 - Device reports `ecp-tls-enabled: true` in `/query/device-info` but serves plaintext HTTP on all ports — the TLS flag is cosmetic
+- Note: `/input` endpoint accepts touch/accelerometer/directional events (200) but does **not** navigate the UI — it only delivers sensor data to apps that explicitly register for it
 
 ---
 
@@ -70,6 +69,38 @@ python3 poc.py --ip <ROKU_IP> -k tvinput.hdmi1    # switch to HDMI 1
 python3 poc.py --ip <ROKU_IP> -k tvinput.dtv       # switch to antenna
 python3 poc.py --inputs                             # list all inputs
 ```
+
+---
+
+## Endpoint Access with Limited Mode ON
+
+Confirmed live against TCL 32S327, Roku OS 16.0.4, limited mode enabled.
+
+### Accessible (bypass)
+
+| Endpoint | What it does |
+|---|---|
+| `/launch/{app_id}` | Launch apps, switch inputs, deep-link content, kill apps |
+| `/launch/837?contentId=<id>` | Force YouTube to specific video (bypasses profile screen) |
+| `/launch/tvinput.hdmi1` | Switch input / kill running app |
+| `/query/device-info` | Full device fingerprint (60+ fields) |
+| `/query/active-app` | What's currently running (surveillance) |
+| `/input` | Returns 200 but only delivers sensor data to apps, does not navigate UI |
+| `/dial/Netflix` | DIAL state enumeration |
+| `/dial/YouTube` | DIAL state + leaks session tokens (`yumi`, `oisi`) |
+| `port 7000 /info` | AirPlay info — separate MAC, serial, firmware, display caps |
+
+### Blocked (403)
+
+| Endpoint | What it blocks |
+|---|---|
+| `/keypress/*` | All remote key presses (Home, Select, arrows, inputs) |
+| `/keydown/*`, `/keyup/*` | Key hold/release |
+| `/query/apps` | Installed app list |
+| `/query/media-player` | Media player state |
+| `/query/tv-channels` | Channel list |
+| `/query/tv-active-channel` | Active channel |
+| `/search` | Content search |
 
 ---
 
